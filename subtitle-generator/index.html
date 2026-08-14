@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>日语字幕生成器</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f1a; color: #e0e0e0; min-height: 100vh; }
+  .container { max-width: 900px; margin: 0 auto; padding: 30px 20px; }
+  h1 { text-align: center; font-size: 28px; margin-bottom: 6px; background: linear-gradient(135deg, #6c5ce7, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .subtitle { text-align: center; color: #888; margin-bottom: 30px; font-size: 14px; }
+
+  .card { background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 16px; padding: 24px; margin-bottom: 20px; }
+  .card-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #a78bfa; }
+
+  .upload-zone { border: 2px dashed #2a2a4a; border-radius: 12px; padding: 40px; text-align: center; cursor: pointer; transition: .2s; }
+  .upload-zone:hover, .upload-zone.drag { border-color: #6c5ce7; background: rgba(108,92,231,.05); }
+  .upload-zone svg { width: 48px; height: 48px; margin-bottom: 12px; opacity: .5; }
+  .upload-zone p { color: #666; font-size: 14px; }
+
+  .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .col { flex: 1; min-width: 180px; }
+  label { display: block; font-size: 13px; color: #999; margin-bottom: 6px; }
+  input[type=range] { width: 100%; accent-color: #6c5ce7; }
+  select, .range-val { background: #0f0f1a; color: #e0e0e0; border: 1px solid #2a2a4a; border-radius: 8px; padding: 8px 12px; font-size: 14px; width: 100%; }
+  .range-val { text-align: center; margin-top: 4px; }
+
+  button { width: 100%; padding: 14px; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; transition: .2s; margin-top: 12px; }
+  .btn-primary { background: linear-gradient(135deg, #6c5ce7, #8b5cf6); color: #fff; }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(108,92,231,.4); }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  .progress-bar { height: 4px; background: #2a2a4a; border-radius: 2px; margin-top: 16px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #6c5ce7, #a855f7); transition: width .3s; border-radius: 2px; }
+  .progress-text { font-size: 13px; color: #888; margin-top: 8px; text-align: center; }
+
+  .preview { background: #0a0a14; border: 1px solid #2a2a4a; border-radius: 12px; padding: 16px; max-height: 360px; overflow-y: auto; font-family: 'Consolas', 'Courier New', monospace; font-size: 13px; line-height: 1.8; white-space: pre-wrap; }
+  .preview::-webkit-scrollbar { width: 6px; }
+  .preview::-webkit-scrollbar-thumb { background: #2a2a4a; border-radius: 3px; }
+
+  .files { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+  .file-btn { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #0f0f1a; border: 1px solid #2a2a4a; border-radius: 8px; color: #ccc; text-decoration: none; font-size: 13px; transition: .2s; }
+  .file-btn:hover { border-color: #6c5ce7; background: rgba(108,92,231,.1); }
+  .file-btn .icon { font-size: 18px; }
+  .file-btn .badge { margin-left: auto; font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #2a2a4a; }
+  .badge.ja { background: rgba(52,211,153,.2); color: #34d399; }
+  .badge.zh { background: rgba(168,85,247,.2); color: #a855f7; }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .hidden { display: none; }
+  .stats { font-size: 15px; color: #34d399; text-align: center; padding: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🎙️ 日语字幕生成器</h1>
+  <p class="subtitle">上传音频 → 说话人分离 → 语音识别 → 翻译 → 下载 SRT</p>
+
+  <!-- 上传区 -->
+  <div class="card">
+    <div class="upload-zone" id="dropZone">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4m0 0L8 8m4-4l4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+      <p>拖拽音频文件到此处，或点击上传</p>
+      <p style="font-size:12px;margin-top:4px;">支持 MP3 / WAV / M4A / FLAC</p>
+      <input type="file" id="fileInput" accept="audio/*" hidden>
+    </div>
+    <div id="fileName" style="text-align:center;margin-top:10px;color:#6c5ce7;font-size:14px;"></div>
+  </div>
+
+  <!-- 参数 -->
+  <div class="card">
+    <div class="card-title">⚙️ 参数设置</div>
+    <div class="row">
+      <div class="col">
+        <label>说话人数</label>
+        <input type="range" id="numSpeakers" min="1" max="5" value="2" step="1">
+        <div class="range-val"><span id="numSpeakersVal">2</span> 人</div>
+      </div>
+      <div class="col">
+        <label>单条最大字数</label>
+        <input type="range" id="maxChars" min="20" max="80" value="40" step="5">
+        <div class="range-val"><span id="maxCharsVal">40</span> 字</div>
+      </div>
+      <div class="col">
+        <label>Whisper 模型</label>
+        <select id="whisperModel">
+          <option value="large-v3">large-v3（最准）</option>
+          <option value="medium">medium（较快）</option>
+          <option value="small">small（快速）</option>
+          <option value="base">base（测试用）</option>
+        </select>
+      </div>
+      <div class="col">
+        <label>翻译引擎</label>
+        <select id="translator">
+          <option value="claude">Claude（最准）</option>
+          <option value="google">Google（免费，国内可能不行）</option>
+          <option value="deepl">DeepL（需 Key）</option>
+        </select>
+      </div>
+      <div class="col" id="apiKeyCol">
+        <label>API Key <span style="color:#666;font-weight:400;">（可选，不填用默认额度）</span></label>
+        <input type="password" id="apiKey" placeholder="sk-ant-..." style="background:#0f0f1a;color:#e0e0e0;border:1px solid #2a2a4a;border-radius:8px;padding:8px 12px;font-size:14px;width:100%;">
+      </div>
+      <div class="col" style="display:flex;align-items:flex-end;padding-bottom:4px;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;color:#ccc;margin:0;">
+          <input type="checkbox" id="doTranslate" checked style="accent-color:#6c5ce7;width:18px;height:18px;">
+          翻译为中文
+        </label>
+      </div>
+    </div>
+    <button class="btn-primary" id="startBtn" onclick="startProcess()">
+      🚀 开始处理
+    </button>
+    <div id="progressArea" class="hidden">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+      <div class="progress-text" id="progressText">准备中...</div>
+    </div>
+    <div class="stats" id="stats"></div>
+  </div>
+
+  <!-- 预览 -->
+  <div class="card" id="previewCard" style="display:none;">
+    <div class="card-title">📝 字幕预览（前 20 条）</div>
+    <div class="preview" id="preview"></div>
+  </div>
+
+  <!-- 下载 -->
+  <div class="card" id="downloadCard" style="display:none;">
+    <div class="card-title">📥 下载字幕文件</div>
+    <div class="files" id="files"></div>
+  </div>
+</div>
+
+<script>
+let audioFile = null;
+let taskId = null;
+let pollTimer = null;
+let startTime = null;
+let lastProgress = -1;
+
+const $ = id => document.getElementById(id);
+
+// 文件拖拽
+const dropZone = $('dropZone');
+dropZone.addEventListener('click', () => $('fileInput').click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('audio/')) { setFile(file); }
+});
+
+$('fileInput').addEventListener('change', e => {
+  if (e.target.files[0]) setFile(e.target.files[0]);
+});
+
+function setFile(file) {
+  audioFile = file;
+  $('fileName').textContent = '📁 ' + file.name + ' (' + (file.size / 1024 / 1024).toFixed(1) + ' MB)';
+}
+
+// 滑块联动
+$('numSpeakers').addEventListener('input', e => $('numSpeakersVal').textContent = e.target.value);
+$('maxChars').addEventListener('input', e => $('maxCharsVal').textContent = e.target.value);
+
+// 翻译引擎切换 → 更新 placeholder
+$('translator').addEventListener('change', e => {
+  const key = $('apiKey');
+  const hint = $('apiKeyCol').querySelector('span');
+  if (e.target.value === 'google') {
+    key.placeholder = '无需 Key，完全免费';
+    hint.textContent = '（无需填写）';
+    key.disabled = true;
+    key.style.opacity = '0.4';
+  } else if (e.target.value === 'deepl') {
+    key.placeholder = '输入 DeepL API Key（免费注册 deepL.com）';
+    hint.textContent = '（必填）';
+    key.disabled = false;
+    key.style.opacity = '1';
+  } else {
+    key.placeholder = 'sk-ant-...（可选，不填用默认额度）';
+    hint.textContent = '（可选，不填用默认额度）';
+    key.disabled = false;
+    key.style.opacity = '1';
+  }
+});
+
+// 主流程
+async function startProcess() {
+  if (!audioFile) { alert('请先上传音频文件'); return; }
+
+  const btn = $('startBtn');
+  btn.disabled = true; btn.textContent = '处理中...';
+  $('progressArea').classList.remove('hidden');
+  startTime = Date.now();
+  lastProgress = -1;
+  // 锁定参数
+  ['numSpeakers','maxChars','whisperModel','translator','apiKey','doTranslate'].forEach(id => $(id).disabled = true);
+  $('stats').textContent = '';
+  $('previewCard').style.display = 'none';
+  $('downloadCard').style.display = 'none';
+
+  const form = new FormData();
+  form.append('audio', audioFile);
+  form.append('num_speakers', $('numSpeakers').value);
+  form.append('max_chars', $('maxChars').value);
+  form.append('whisper_model', $('whisperModel').value);
+  form.append('do_translate', $('doTranslate').checked);
+  form.append('translator', $('translator').value);
+  form.append('api_key', $('apiKey').value);
+
+  try {
+    const resp = await fetch('/api/process', { method: 'POST', body: form });
+    const text = await resp.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      alert('服务器返回异常（状态码 ' + resp.status + '），请查看终端日志');
+      resetBtn(); return;
+    }
+    if (data.error) { alert(data.error); resetBtn(); return; }
+    taskId = data.task_id;
+    pollStatus();
+  } catch (e) {
+    alert('请求失败: ' + e.message);
+    resetBtn();
+  }
+}
+
+async function pollStatus() {
+  if (!taskId) return;
+  try {
+    const resp = await fetch('/api/status/' + taskId);
+    const data = await resp.json();
+
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const mm = Math.floor(elapsed / 60), ss = elapsed % 60;
+    const timeStr = `${mm}:${String(ss).padStart(2, '0')}`;
+
+    $('progressFill').style.width = data.progress + '%';
+
+    // 进度不动时脉冲动画提示仍在工作
+    if (data.progress === lastProgress && data.status === 'processing') {
+      $('progressFill').style.animation = 'pulse 1.5s ease-in-out infinite';
+    } else {
+      $('progressFill').style.animation = '';
+      lastProgress = data.progress;
+    }
+    $('progressText').textContent = `[${timeStr}] ${data.progress}% ${data.message}`;
+
+    if (data.status === 'done') {
+      resetBtn();
+      $('stats').textContent = '✅ ' + data.stats;
+      $('preview').textContent = data.preview;
+      $('previewCard').style.display = 'block';
+
+      const filesDiv = $('files');
+      filesDiv.innerHTML = '';
+      data.files.forEach(f => {
+        const isJa = f.includes('_ja');
+        const isZh = f.includes('_zh');
+        let badge = '';
+        if (isJa) badge = '<span class="badge ja">日语</span>';
+        if (isZh) badge = '<span class="badge zh">中文</span>';
+        const a = document.createElement('a');
+        a.className = 'file-btn';
+        a.href = '/api/download/' + taskId + '/' + f;
+        a.download = f;
+        a.innerHTML = `<span class="icon">📄</span> ${f} ${badge}`;
+        filesDiv.appendChild(a);
+      });
+      $('downloadCard').style.display = 'block';
+      return;  // 完成，停止轮询
+    } else if (data.status === 'error') {
+      resetBtn();
+      alert('处理失败: ' + data.message);
+      return;
+    }
+    // 继续轮询（每 2 秒）
+    pollTimer = setTimeout(pollStatus, 2000);
+  } catch (e) {
+    resetBtn();
+    alert('请求失败: ' + e.message);
+  }
+}
+
+function resetBtn() {
+  const btn = $('startBtn');
+  btn.disabled = false; btn.textContent = '🚀 开始处理';
+  // 解锁参数
+  ['numSpeakers','maxChars','whisperModel','translator','apiKey','doTranslate'].forEach(id => {
+    const el = $(id);
+    el.disabled = false;
+    if (id === 'apiKey' && $('translator').value === 'google') return;
+  });
+}
+</script>
+</body>
+</html>
